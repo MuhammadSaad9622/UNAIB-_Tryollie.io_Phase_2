@@ -280,6 +280,7 @@ app.use(
       "Origin",
       "Access-Control-Request-Method",
       "Access-Control-Request-Headers",
+      "x-user-id",
     ],
     exposedHeaders: ["Access-Control-Allow-Origin"],
     preflightContinue: false,
@@ -312,7 +313,7 @@ app.use((req, res, next) => {
   );
   res.header(
     "Access-Control-Allow-Headers",
-    "Origin,X-Requested-With,Content-Type,Accept,Authorization"
+    "Origin,X-Requested-With,Content-Type,Accept,Authorization,x-user-id"
   );
 
   if (req.method === "OPTIONS") {
@@ -666,8 +667,7 @@ io.on("connection", (socket) => {
 
       socket.join(callId);
       console.log(
-        `📞 User ${socket.id} joined call ${callId} on ${
-          platform || "unknown"
+        `📞 User ${socket.id} joined call ${callId} on ${platform || "unknown"
         } platform`
       );
 
@@ -808,6 +808,29 @@ io.on("connection", (socket) => {
       console.error("Error marking suggestion as used:", error);
       socket.emit("suggestionError", {
         error: "Failed to mark suggestion as used",
+      });
+    }
+  });
+
+  // NEW: Handle manual suggestion request
+  socket.on("suggestion_request", async (data) => {
+    try {
+      const { callId } = data;
+      console.log(`🤖 Manual suggestion request received for call ${callId}`);
+
+      // Get the last transcript text for context if possible, or just trigger generation
+      // For now, we'll try to get the last transcript from the database or just use a placeholder to trigger the context lookup
+
+      // We need to trigger generateAndSaveAISuggestion
+      // But it expects transcriptText. We should probably modify it to be optional or fetch it.
+      // Let's modify generateAndSaveAISuggestion to handle missing transcriptText by fetching latest.
+
+      await generateAndSaveAISuggestion(callId, "");
+
+    } catch (error) {
+      console.error("Error handling manual suggestion request:", error);
+      socket.emit("suggestionError", {
+        error: "Failed to generate suggestion",
       });
     }
   });
@@ -1016,6 +1039,8 @@ async function handleNewTranscript(callId, transcriptData, socket) {
       return;
     }
 
+    console.log("📝 Transcript received (Auto-generation DISABLED)");
+
     // Persist transcript to DB
     try {
       const Transcript = (await import("./models/Transcript.js")).default;
@@ -1086,6 +1111,8 @@ async function handleNewTranscript(callId, transcriptData, socket) {
     transcriptAnalyzer.addTranscript(transcriptData);
 
     // Generate AI suggestion
+    // DISABLED: Manual trigger only
+    /*
     if (transcriptData.text && globalCallDoc && globalCallId) {
       const transcriptKey = `${callId}-${transcriptData.text}-${transcriptData.timestamp}`;
 
@@ -1107,6 +1134,7 @@ async function handleNewTranscript(callId, transcriptData, socket) {
         console.error("❌ Error generating AI suggestion:", error);
       }
     }
+    */
   } catch (error) {
     console.error("❌ Error handling new transcript:", error);
     if (socket) {
@@ -1122,7 +1150,7 @@ async function handleNewTranscript(callId, transcriptData, socket) {
 async function generateAndSaveAISuggestion(originalCallId, transcriptText) {
   try {
     console.log(
-      `🤖 Generating AI suggestion for transcript: "${transcriptText}"`
+      `🤖 Generating AI suggestion${transcriptText ? ` for transcript: "${transcriptText}"` : " (Manual Trigger)"}`
     );
 
     // Use the stored global call document or resolve it
@@ -1171,6 +1199,16 @@ async function generateAndSaveAISuggestion(originalCallId, transcriptText) {
     console.log(
       `📚 Retrieved ${conversationHistory.length} transcripts for context`
     );
+
+    // If manual trigger (empty transcriptText), use the latest transcript text
+    if (!transcriptText && conversationHistory.length > 0) {
+      const lastTranscript = conversationHistory[conversationHistory.length - 1];
+      transcriptText = lastTranscript.text;
+      console.log(`📝 Using latest transcript for manual trigger: "${transcriptText}"`);
+    } else if (!transcriptText) {
+      console.log("⚠️ No transcripts available for context");
+      return;
+    }
 
     // Check daily quota before generating suggestion
     const AISuggestion = (await import("./models/AISuggestion.js")).default;
@@ -1499,6 +1537,7 @@ const startServer = async () => {
       console.log(
         `🚀 AI Sales Call Assistant Server running on port ${config.PORT}`
       );
+      console.log("🚀 SERVER STARTED WITH MANUAL TRIGGER ONLY (DEBUG VERSION)");
       console.log(`📡 WebSocket server ready for real-time communication`);
       console.log(
         `🗄️  Database: ${database.connection ? "✅" : "❌"} Connected`
