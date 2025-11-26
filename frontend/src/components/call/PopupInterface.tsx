@@ -55,8 +55,15 @@ export const PopupInterface: React.FC<PopupInterfaceProps> = ({
   }, [callId]);
 
   // Use WebSocket hook for real-time data with validated database call ID
-  const { transcript, suggestions, isConnected, joinCall, leaveCall, socket } =
-    useWebSocket(actualCallId, userId);
+  const {
+    transcript,
+    suggestions,
+    isConnected,
+    joinCall,
+    leaveCall,
+    socket,
+    requestSuggestion,
+  } = useWebSocket(actualCallId || "", userId);
 
   // Monitor for AI typing state - show typing when we have new transcript but no new suggestion yet
   useEffect(() => {
@@ -148,6 +155,24 @@ export const PopupInterface: React.FC<PopupInterfaceProps> = ({
     }
   };
 
+  // Handle manual AI trigger (Space or Enter)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Space" || event.code === "Enter") {
+        // Prevent default behavior if needed (e.g., scrolling for Space)
+        // event.preventDefault();
+        console.log(`⌨️ Key pressed: ${event.code} - Requesting AI suggestion`);
+        requestSuggestion();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [requestSuggestion]);
+
   // Show loading if actualCallId is still being determined
   if (actualCallId === null) {
     return (
@@ -237,9 +262,8 @@ export const PopupInterface: React.FC<PopupInterfaceProps> = ({
             <span className="text-gray-900 font-semibold">Tryollie AI</span>
             <div className="flex items-center space-x-2 text-xs text-gray-500">
               <div
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isConnected ? "bg-green-500" : "bg-red-500"
-                }`}
+                className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"
+                  }`}
               ></div>
               <span>{isConnected ? "Connected" : "Disconnected"}</span>
             </div>

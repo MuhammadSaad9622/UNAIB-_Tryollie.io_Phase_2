@@ -162,7 +162,7 @@ export const useWebSocket = (callId: string, userId?: string) => {
             existing.speaker === transcript.speaker &&
             Math.abs(
               new Date(existing.timestamp).getTime() -
-                new Date(transcript.timestamp).getTime()
+              new Date(transcript.timestamp).getTime()
             ) < 5000
         );
 
@@ -186,7 +186,7 @@ export const useWebSocket = (callId: string, userId?: string) => {
             existing.text === suggestion.text &&
             Math.abs(
               new Date(existing.timestamp).getTime() -
-                new Date(suggestion.timestamp).getTime()
+              new Date(suggestion.timestamp).getTime()
             ) < 1000
         );
 
@@ -370,6 +370,17 @@ export const useWebSocket = (callId: string, userId?: string) => {
     setOnMeetingEndCallback(() => callback);
   }, []);
 
+  // NEW: Request AI suggestion manually
+  const requestSuggestion = useCallback(() => {
+    if (socket && socket.connected) {
+      console.log("🤖 Requesting AI suggestion manually...");
+      socket.emit("suggestion_request", {
+        callId,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }, [socket, callId]);
+
   return {
     ...data,
     joinCall,
@@ -381,5 +392,6 @@ export const useWebSocket = (callId: string, userId?: string) => {
     sendMeetingStart,
     sendMeetingEnd,
     setMeetingEndCallback,
+    requestSuggestion,
   };
 };
