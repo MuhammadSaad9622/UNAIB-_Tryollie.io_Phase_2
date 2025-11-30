@@ -54,8 +54,7 @@ class WebSocketService {
       }
 
       console.log(
-        `WebSocket connected: User ${userId}, Call ${
-          callId || "None"
+        `WebSocket connected: User ${userId}, Call ${callId || "None"
         }, Participant ${participantName || "Unknown"}`
       );
 
@@ -189,11 +188,8 @@ class WebSocketService {
           },
         });
 
-        // Generate AI suggestions based on full conversation context
-        await this.generateMultiParticipantSuggestions(
-          client.callId,
-          transcript
-        );
+        // Update context with new transcript (but don't generate suggestion yet)
+        this.updateContext(client.callId, transcript);
       }
     } catch (error) {
       console.error("Error handling transcript:", error);
@@ -226,24 +222,23 @@ class WebSocketService {
     }
   }
 
-  async generateMultiParticipantSuggestions(callId, newTranscript) {
+  updateContext(callId, newTranscript) {
+    const context = this.aiSuggestionContexts.get(callId);
+    if (!context) return;
+
+    // Add new transcript to context
+    context.fullTranscript.push(newTranscript);
+
+    // Keep only last 100 transcripts total
+    if (context.fullTranscript.length > 100) {
+      context.fullTranscript = context.fullTranscript.slice(-100);
+    }
+  }
+
+  async generateSuggestion(callId) {
     try {
       const context = this.aiSuggestionContexts.get(callId);
       if (!context) return;
-
-      // Add new transcript to context
-      context.fullTranscript.push(newTranscript);
-
-      // Keep only last 100 transcripts total
-      if (context.fullTranscript.length > 100) {
-        context.fullTranscript = context.fullTranscript.slice(-100);
-      }
-
-      // Check if enough time has passed since last suggestion (30 seconds)
-      const now = Date.now();
-      if (now - context.lastSuggestionTime < 30000) {
-        return;
-      }
 
       // Import AI service
       const aiService = (await import("./aiService.js")).default;
@@ -275,9 +270,6 @@ class WebSocketService {
         },
       });
 
-      // Update last suggestion time
-      context.lastSuggestionTime = now;
-
       // Broadcast suggestion to all clients in the call room
       this.broadcastToCallRoom(callId, {
         type: "newSuggestion",
@@ -293,7 +285,15 @@ class WebSocketService {
         },
       });
     } catch (error) {
-      console.error("Error generating multi-participant suggestions:", error);
+      console.error("Error generating suggestion:", error);
+      throw error;
+    }
+  }
+
+  async generateMultiParticipantSuggestions(callId, newTranscript) {
+    // Legacy method kept for compatibility if needed, but now just updates context
+    if (newTranscript) {
+      this.updateContext(callId, newTranscript);
     }
   }
 
@@ -346,8 +346,7 @@ class WebSocketService {
     });
 
     console.log(
-      `Participant joined: ${client.participantName} (${
-        client.isHost ? "Host" : "Participant"
+      `Participant joined: ${client.participantName} (${client.isHost ? "Host" : "Participant"
       })`
     );
   }
@@ -374,7 +373,7 @@ class WebSocketService {
   async handleSuggestionRequest(ws, message, client) {
     try {
       // Generate AI suggestions
-      await this.generateMultiParticipantSuggestions(client.callId, null);
+      await this.generateSuggestion(client.callId);
     } catch (error) {
       console.error("Error handling suggestion request:", error);
       this.sendToClient(ws, {
